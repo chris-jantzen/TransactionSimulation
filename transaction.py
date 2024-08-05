@@ -17,14 +17,14 @@ class State(Enum):
     ROLLEDBACK = 'rolledback'
     ACTIVE = 'active'
 
-class Operation(Enum):
+class OperationType(Enum):
     READ = 'read'
     WRITE = 'write'
 
 class SQLQuery:
-    def __init__(self, dataId, operation):
+    def __init__(self, dataId, operationType):
         self.dataId = dataId
-        self.operation = operation
+        self.operation = operationType
 
 class Transaction:
     def __init__(self, id):
@@ -35,27 +35,38 @@ class Transaction:
         self.transactionId = id
         self.state = State.ACTIVE
         self.opCount = 0
-        self.blockedCycleCount = 0
+        self.__blockedCycleCount = 0
 
         # TODO:
         # SQL Query which contains the data id, operation, and lock held (if any)
-        self.sqlQuery = None
+        self.__sqlQuery = None
         self.locks = []
 
     def updateState(self, newState):
         self.state = newState
 
+    def incrementTimout(self):
+        self.__blockedCycleCount += 1
+
+    def resetBlockedCycleCount(self):
+        self.__blockedCycleCount = 0
+
     def shouldRollback(self, timeout):
-        return self.blockedCycleCount >= timeout
+        return self.__blockedCycleCount >= timeout
 
     def setSqlQuery(self, dataId, operation):
         # If SQL Query already exists, should not be able to create a new one
-        if self.sqlQuery is not None:
+        # TODO: Clear the sql query when the lock can be acquired and the operation completed
+        if self.__sqlQuery is not None:
             raise Exception(f"SQL Query already exists for transaction {self.transactionId}")
-        self.sqlQuery = SQLQuery(dataId, operation)
+        self.__sqlQuery = SQLQuery(dataId, operation)
 
-    def addLock(self, lock):
-        self.locks.append(lock)
+    def getSqlQuery(self):
+        return self.__sqlQuery
+
+    def addLock(self, dataId):
+        '''dataId is the data item that has a lock on it'''
+        self.locks.append(dataId)
 
     def hasLockOnDataItem(self, dataId):
         for l in self.locks:

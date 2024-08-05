@@ -13,15 +13,11 @@ class LockType(Enum):
 class Lock:
     def __init__(self, transactionId, dataId, type):
         self.transactionId = transactionId
-        self.dataId = dataId
+        self.dataId = dataId # TODO: Maybe be able to remove this, but leaving now for convenience
         self.type = type
 
 class LockManager():
     __instance = None
-
-    # Dictionary that tracks locks on data items and the queue of transactions waiting for them
-    #    Might not even actually need to track who is waiting, since it's first come first served
-    #    can maybe just note the id of the transaction that has it right now along with the type of lock.
 
     def getInstance(self):
         if LockManager.__instance is None:
@@ -32,6 +28,9 @@ class LockManager():
         if LockManager.__instance is not None:
             raise Exception("Singleton cannot be instantiated more than once")
 
+        # Dictionary that tracks locks on data items and the queue of transactions waiting for them
+        #    Might not even actually need to track who is waiting, since it's first come first served
+        #    can maybe just note the id of the transaction that has it right now along with the type of lock.
         self.locks = dict.fromkeys(range(0, 32), [])
 
         LockManager.__instance = self
@@ -44,7 +43,7 @@ class LockManager():
         lockEntry = self.locks.get(dataId)
 
         if len(lockEntry) == 0:
-            self.locks.update({ dataId: Lock(transactionId, dataId, type)})
+            self.locks.update({ dataId: [Lock(transactionId, dataId, type)]})
             return True
         elif type is LockType.SHARED and len([l for l in lockEntry if l.type is LockType.SHARED]) == len(lockEntry):
             # Can grant lock, all locks on this item are shared
