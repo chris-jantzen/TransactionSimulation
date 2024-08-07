@@ -1,11 +1,14 @@
 from enum import Enum
 import csv
 
+from bufferManager import BufferManager
+
 class LogType(Enum):
     START = "S"
     FLIP = "F"
     ROLLBACK = "R"
     COMMIT = "C"
+    REDO = "REDO"
 
     def __str__(self):
         return str(self.value)
@@ -39,6 +42,7 @@ class RecoveryManager():
             raise Exception("Singleton cannot be instantiated more than once")
 
         self.__logBuffer = []
+        self.__undoList = []
 
         RecoveryManager.__instance = self
 
@@ -65,12 +69,68 @@ class RecoveryManager():
             log_writer.writerow(log.formatLog())
 
         # Release the semaphore on the log buffer
-        return
 
-    def flushLogs(self):
-        # TODO: I think maybe rather than flushing the log buffer, I'll just immediately write the logs to the log file
-        # Seems easier to have the logs in memory than having to read them back.
-        #
-        # Alternatively, I could flush the logs to the buffer and then clean my in memory log so it would be purely just
-        # starting from the beginning after a flush and then just appending to the log, but then handling rollbacks may be tough
-        pass
+    def getLogsReverseScan(self):
+        for log in reversed(self.__logBuffer):
+            yield log
+
+    def recover(self):
+        bm = BufferManager.getInstance()
+
+        # Go through the log buffer forwards
+        with open('log.csv', 'r') as logfile:
+            log_reader = csv.reader(logfile)
+            for logLine in log_reader:
+                logType = logLine[-1]
+                transactionId = logLine[0]
+                dataId = None
+                newValue = None
+
+                if len(logLine) == 4:
+                    dataId = logLine[1]
+                    newValue = logLine[2]
+
+                if logType is LogType.START.value:
+                    # Add transaction to the undo list as start log is seen
+                    self.__undoList.append(transactionId)
+
+                if logType is LogType.COMMIT.value or logType is LogType.ROLLBACK.value:
+                    # Remove transactions from the undo list as rollback and commit type logs are seen
+                    self.__undoList.remove(transactionId)
+
+                # Redo every flip and redo operation seen
+                if logType is LogType.FLIP.value or logType is LogType.REDO.value:
+                    # invert the new value and update the buffer
+                    if newValue == '1':
+                        bm.setValueAtLocation(dataId, '0')
+                    else:
+                        bm.setValueAtLocation(dataId, '1')
+
+
+        # Finally just rollback any transactions that remain in the undo list and add rollback logs for each (would normally be abort logs)
+        with open('log.csv', 'r') as logfile:
+            log_reader = csv.reader(logfile)
+            # Read backwards from the end this time
+            for logLine in reversed(log_reader):
+                if logLine[0] not in self.__undoList:
+                    continue
+
+                logType = logLine[-1]
+                transactionId = logLine[0]
+
+                if logType is LogType.START.value:
+                    self.__undoList.remove(transactionId)
+                    continue
+
+                dataId = logLine[1]
+                newValue = logLine[2]
+
+                if logType is LogType.FLIP.value or logType is LogType.REDO.value:
+                    # TODO: See if it works out okay to have these redo logs at the end of the log of if they need inserted immediately after
+                    # the rollback log. I think it should work okay, as long as it is after
+                    if newValue == '1':
+                        bm.setValueAtLocation(dataId, '0')
+                        self.createLog(LogType.REDO, transactionId, dataId, '0')
+                    else:
+                        bm.setValueAtLocation(dataId, '1')
+                        self.createLog(LogType.REDO, transactionId, dataId, '1')

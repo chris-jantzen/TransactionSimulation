@@ -55,8 +55,8 @@ class LockManager():
         else:
             return False
 
-    # Method to free a lock on a data item
-    def freeLock(self, dataId, transactionId):
+    # Method to release a lock on a data item
+    def release(self, dataId, transactionId):
         # Verify that the lock actually exists
         lockEntry = self.locks.get(dataId)
         lockFound = False

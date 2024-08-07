@@ -28,19 +28,13 @@ class SQLQuery:
 
 class Transaction:
     def __init__(self, id):
-        # Might make sense to take the transactionId as input so the transaction manager
-        # can quickly check in the transaction list (or maybe the log) to see if the id it randomly generates
-        # is already in use
-        # self.transactionId = randint(1, 100000000)
-        self.transactionId = id
+        self.transactionId = id # ID comes in from transactionManager
         self.state = State.ACTIVE
         self.opCount = 0
         self.__blockedCycleCount = 0
 
-        # TODO:
-        # SQL Query which contains the data id, operation, and lock held (if any)
         self.__sqlQuery = None
-        self.locks = []
+        self.__locks = []
 
     def updateState(self, newState):
         self.state = newState
@@ -64,15 +58,22 @@ class Transaction:
     def getSqlQuery(self):
         return self.__sqlQuery
 
+    def resetSqlQuery(self):
+        self.__sqlQuery = None
+
     def addLock(self, dataId):
         '''dataId is the data item that has a lock on it'''
-        self.locks.append(dataId)
+        self.__locks.append(dataId)
 
     def hasLockOnDataItem(self, dataId):
-        for l in self.locks:
+        for l in self.__locks:
             if dataId == l.dataId:
                 return True
         return False
 
-    def removeALock(self, lock):
-        self.locks.remove(lock)
+    def releaseLocks(self):
+        self.__locks = []
+
+    def getLocks(self):
+        for l in self.__locks:
+            yield l
