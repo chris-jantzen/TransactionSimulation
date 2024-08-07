@@ -1,3 +1,4 @@
+from bufferManager import BufferManager
 from lockManager import LockManager
 from recoveryManager import LogType, RecoveryManager
 from transaction import OperationType, Transaction, State
@@ -51,20 +52,37 @@ class TransactionManager:
         if transaction is None:
             raise Exception(f"Transaction with ID {transactionId} not found")
 
+        rm = RecoveryManager.getInstance()
+        bm = BufferManager.getInstance()
+        lm = LockManager.getInstance()
+
         # if operation sqlQuery operation is a write and can be executed, increment the opCount variable
-        if transaction.getSqlQuery().operationType is OperationType.WRITE:
+        sqlQuery = transaction.getSqlQuery()
+        if sqlQuery.operationType is OperationType.WRITE:
             transaction.opCount += 1 # TODO: Make opcount increment method on the transaction class
             self.opCount += 1 # Write op happening, increment count to know when to flush to disk
+            oldValue = bm.getValueAtLocation(sqlQuery.location)
+            newValue = None
+            if oldValue == '0':
+                newValue = '1'
+            else:
+                newValue = '0'
+            rm.createLog(LogType.FLIP, transactionId, sqlQuery.dataId, newValue)
+
             # Do the operation
+            bm.flip(sqlQuery.dataId)
+
             # if the opCount variable reaches 25, then use the DbManager singleton class instance to flush the buffer to the DB
             if self.opCount == 25:
                 self.opCount = 0
                 return True # FLUSH BUFFER TO DISK
             return False # DON'T FLUSH BUFFER TO DISK
-        elif transaction.getSqlQuery().operationType is OperationType.READ:
+        elif sqlQuery.operationType is OperationType.READ:
             # Do the operation
+            _ = bm.getValueAtLocation(sqlQuery.dataId)
+            transaction.opCount += 1 # TODO: Do read ops count as operations?
             # Free the shared lock (strict 2PL only requires holding the exclusive locks until committing)
-            pass
+            lm.release(sqlQuery.dataId, transactionId)
 
     def commitTransaction(self, transactionId):
         transaction = None
@@ -79,6 +97,7 @@ class TransactionManager:
         rm = RecoveryManager.getInstance()
         rm.createLog(LogType.COMMIT, transaction.transactionId)
 
+        # TODO: Delete comment when sure I won't be doing it this way
         # Flush logs to the log file (Optional, right now just planning to push logs directly to the log file as soon as they're made)
 
         lm = LockManager.getInstance()

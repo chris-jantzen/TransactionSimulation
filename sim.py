@@ -82,14 +82,3 @@ for cycle in cycles:
         # Commit if op count has reached t_size
         if transaction.op_count == t_size:
             transactionManager.commitTransaction(transaction.transactionId)
-        pass
-
-    pass
-
-# Needs:
-#   Locking Manager
-#     Handle shared and exclusive type locks
-#     Track what transaction has what lock on what data item
-#   Transaction Manager
-#   Recovery Manager
-#   Buffer Manager

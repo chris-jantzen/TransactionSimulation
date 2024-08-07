@@ -21,6 +21,9 @@ class BufferManager():
         else:
             self.__buffer[dataId] = "0"
 
+    def getValueAtLocation(self, dataId):
+        return self.__buffer[dataId]
+
     def setValueAtLocation(self, dataId, value):
         self.__buffer[dataId] = value
 
