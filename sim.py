@@ -1,84 +1,79 @@
 import sys
-import os
 import random
+from bufferManager import BufferManager
 from lockManager import LockManager, LockType
 from recoveryManager import RecoveryManager
 from transaction import OperationType, State
 from transactionManager import TransactionManager
+from util import Action, getAction, initDbAndLogIfMissing
 
-cycles = sys.argv[1]
-t_size = sys.argv[2]
-start_prob = sys.argv[3]
-write_prob = sys.argv[4]
-rollback_prob = sys.argv[5]
-timeout = sys.argv[6]
+CYCLES = int(sys.argv[1])
+T_SIZE = int(sys.argv[2])
+START_PROB = float(sys.argv[3])
+WRITE_PROB = float(sys.argv[4])
+ROLLBACK_PROB = float(sys.argv[5])
+TIMEOUT = int(sys.argv[6])
 
-dbPath = "db.txt"
-log_path = "log.csv"
+# Ensure the db and log files exist
+initDbAndLogIfMissing()
 
-if not os.path.exists(dbPath):
-    with open(dbPath, 'x') as file:
-        file.write('0'.zfill(32))
-
-if not os.path.exists(log_path):
-    with open(log_path, 'x') as file:
-        file.write('')
-
-# 1. Read in the log file and start the recovery process
-    #  Redo back from the beginning (this is where having had redo logs may help to make it easy to redo what the rollbacks undid)
-    #  Undo the transactions that didn't have a commit or rollback
-recoveryManager = RecoveryManager.getInstance()
-recoveryManager.recover()
+# 1. Begin recovery phase
+RecoveryManager.getInstance().recover()
 
 # 2. Begin simulation process
 transactionManager = TransactionManager.getInstance()
 lockManager = LockManager.getInstance()
-for cycle in cycles:
+
+for cycle in range(CYCLES):
     # Determine if a new cycle starts (if it does, create a new one in the transaction manager)
-    if start_prob <= random.random():
+    if START_PROB >= random.random():
         transactionManager.createTransaction()
 
-    # For each active transaction in the transaction list (method in manager to get active transactions? Maybe use a generator with yield)
+    # For each active transaction in the transaction list
     for transaction in transactionManager.getTransactions():
-        # Submit an operation to either read or write based on write_prob
-        if transaction.state is State.BLOCKED:
+        # Commit if op count has reached t_size
+        if transaction.isReadyToCommit(T_SIZE):
+            transactionManager.commitTransaction(transaction.transactionId)
+            continue
+
+        if transaction.getState() is State.BLOCKED:
             # Look at sqlQuery
             query = transaction.getSqlQuery()
             # Request lock again
-            granted = lockManager.requestLock(query.dataId, transaction.transactionId, query.operationType)
+            requestGranted = lockManager.hasLockBeenGranted(query.dataId, transaction.transaction)
             # If still blocked, check shouldRollBack
-            if granted is False and transaction.shouldRollBack(timeout):
-                # Initiate rollback if it should
-                transactionManager.rollbackTransaction(transaction.transactionId)
-        elif rollback_prob <= random.random():
-            # INITIATE ROLLBACK
-            transactionManager.rollbackTransaction(transaction.transactionId)
-        elif write_prob <= random.random():
-            # Schedule sqlQuery
-            dataId = random.randomint(0, 31)
-            transaction.setSqlQuery(dataId, OperationType.WRITE)
-            # Would need to request an exclusive lock
-            requestStatus = lockManager.requestLock(dataId, transaction.transactionId, LockType.EXCLUSIVE)
-            if requestStatus is True:
-                transaction.addLock(dataId)
-                transaction.resetBlockedCycleCount()
-
-                # do the operation
-                transactionManager.executeOperation(transaction.transactionId)
-                # reset the sqlQuery on the transaction
-                transaction.resetSqlQuery()
-            else:
-                transaction.updateState(State.BLOCKED)
+            if requestGranted is False:
                 transaction.incrementBlockedCycleCount()
+                if transaction.shouldRollback(TIMEOUT):
+                    # Initiate rollback if it should
+                    transactionManager.rollbackTransaction(transaction.transactionId)
+            else:
+                # Unblocked, do the operation
+                transactionManager.executeOperation(transaction.transactionId)
         else:
-            # Schedule sql read query
-            dataId = random.randomint(0, 31)
-            transaction.setSqlQuery(dataId, OperationType.WRITE)
-            # Would need to request a shared lock
-            requestStatus = lockManager.requestLock(dataId, transaction.transactionId, LockType.SHARED)
-            if requestStatus is True:
-                transaction.addLock(dataId)
-
-        # Commit if op count has reached t_size
-        if transaction.op_count == t_size:
-            transactionManager.commitTransaction(transaction.transactionId)
+            # Get what kind of action to take {Write, Rollback, Read}
+            action = getAction(WRITE_PROB, ROLLBACK_PROB)
+            if action is Action.WRITE:
+                # Schedule write sqlQuery
+                dataId = random.randint(0, 31)
+                transaction.setSqlQuery(dataId, OperationType.WRITE)
+                # Need to request an exclusive lock
+                requestGranted = lockManager.requestLock(dataId, transaction.transactionId, LockType.EXCLUSIVE)
+                if requestGranted is True:
+                    # do the operation
+                    transactionManager.executeOperation(transaction.transactionId)
+                else:
+                    # transaction is blocked
+                    transaction.setState(State.BLOCKED)
+                    transaction.incrementBlockedCycleCount()
+            elif action is Action.ROLLBACK:
+                # Initiate Rollback
+                transactionManager.rollbackTransaction(transaction.transactionId)
+            else:
+                # Schedule sql read query
+                dataId = random.randint(0, 31)
+                transaction.setSqlQuery(dataId, OperationType.READ)
+                # Would need to request a shared lock
+                requestGranted = lockManager.requestLock(dataId, transaction.transactionId, LockType.SHARED)
+                if requestGranted is True:
+                    transaction.addLock(dataId)

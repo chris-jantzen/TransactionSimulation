@@ -4,3 +4,4 @@ test.py
 reset.py
 logInit.py
 sim_notes.py
+__pycache__

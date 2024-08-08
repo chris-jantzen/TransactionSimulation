@@ -1,25 +1,25 @@
-# TODO: re-familiarize with strict 2PL to make sure I do all the rules right.
-# generally, I think it's just that you can't free any locks until commiting, and after you commit,
-# you can start freeing them all.
-
-# Can you free multiple locks in one cycle?
-
 from enum import Enum
+from collections import deque
 
 class LockType(Enum):
     SHARED = "shared"
     EXCLUSIVE = "exclusive"
 
-class Lock:
-    def __init__(self, transactionId, dataId, type):
+class LockDetails():
+    def __init__(self, transactionId: str, type: LockType):
         self.transactionId = transactionId
-        self.dataId = dataId # TODO: Maybe be able to remove this, but leaving now for convenience
         self.type = type
+
+class LockInstance:
+    def __init__(self):
+        self.lockHolder = []
+        self.queue = deque()
 
 class LockManager():
     __instance = None
 
-    def getInstance(self):
+    @staticmethod
+    def getInstance():
         if LockManager.__instance is None:
             LockManager()
         return LockManager.__instance
@@ -28,52 +28,64 @@ class LockManager():
         if LockManager.__instance is not None:
             raise Exception("Singleton cannot be instantiated more than once")
 
-        # Dictionary that tracks locks on data items and the queue of transactions waiting for them
-        #    Might not even actually need to track who is waiting, since it's first come first served
-        #    can maybe just note the id of the transaction that has it right now along with the type of lock.
-        self.locks = dict.fromkeys(range(0, 32), [])
+        # Map of DataId => LockInstance (Details of lock holder and queue waiting for the lock)
+        self.__dataItemLockMap = dict.fromkeys(range(0, 32), LockInstance())
 
         LockManager.__instance = self
 
     # Method to request a lock on a data item
-    def requestLock(self, dataId, transactionId, type) -> bool:
+    def requestLock(self, dataId: str, transactionId: str, type: LockType) -> bool:
         if dataId not in range(0, 31):
             raise Exception(f"Invalid dataId: {dataId}")
 
-        lockEntry = self.locks.get(dataId)
+        lockInstance = self.__dataItemLockMap.get(dataId)
 
-        if len(lockEntry) == 0:
-            self.locks.update({ dataId: [Lock(transactionId, dataId, type)]})
+        if len(lockInstance.lockHolder) == 0:
+            # Nothing holds the lock
+            lockInstance.lockHolder.append(LockDetails(transactionId, type))
             return True
-        elif type is LockType.SHARED and len([l for l in lockEntry if l.type is LockType.SHARED]) == len(lockEntry):
-            # Can grant lock, all locks on this item are shared
-            self.locks.update({ dataId: [*lockEntry, Lock(transactionId, dataId, type)] })
+        elif type is LockType.SHARED and len(list(filter(lambda l: l.type is not LockType.SHARED, lockInstance.lockHolder))) == 0:
+            # All existing holders of the lock are compatible (all lockholders have shared locks)
+            lockInstance.lockHolder.append(LockDetails(transactionId, type))
             return True
-        elif type is LockType.EXCLUSIVE and len(lockEntry) != 0:
-            # Cannot grant lock where there already exists any kind of lock
-            return False
         else:
+            # Lock is held by an incompatible lock, must wait in queue
+            lockInstance.queue.append(LockDetails(transactionId, type))
             return False
 
     # Method to release a lock on a data item
-    def release(self, dataId, transactionId):
-        # Verify that the lock actually exists
-        lockEntry = self.locks.get(dataId)
+    def releaseLock(self, dataId: str, transactionId: str):
+        # Verify that the lock exists on the data item for the transaction
+        lockInstance = self.__dataItemLockMap.get(dataId)
         lockFound = False
-        for l in lockEntry:
+        for l in lockInstance.lockHolder:
             if l.transactionId == transactionId:
                 lockFound = True
                 break
         if lockFound is False:
-            raise Exception(f"Lock with transactionId {transactionId} not found for data item {dataId}")
+            raise Exception(f"TransactionId {transactionId} not found to be holding a lock for dataId {dataId}")
 
-        # Free up the lock
-        newLockEntry = []
-        for l in lockEntry:
-            if l.transactionId is not transactionId:
-                newLockEntry.append(l)
-        self.locks.update({dataId: newLockEntry})
+        # Release the lock held on dataId of transactionId
+        lockInstance.lockHolder = list(filter(lambda l: l.transactionId != transactionId, lockInstance.lockHolder))
 
-    # Grant lock method? Should the next lock in the queue automaticaly be granted a lock or is starvation allowed?
-        # I think first draft, I'm good with allowing starvation
+        # If some other transaction still holds a shared lock on this item, then exit
+        if len(lockInstance.lockHolder) > 0:
+            return
 
+        # If there's no other transaction still holding the lock, then check the queue, and bring in the next lock in line
+        if len(lockInstance.queue) > 0:
+            lockInstance.lockHolder.append(lockInstance.queue[0])
+            lockInstance.queue.popleft()
+            # If the lockholder that has just been added is a shared type and there are also other shared lock type transaction ops
+            # waiting in the queue, grant them the lock as well.
+            if lockInstance.lockHolder[0].type is LockType.SHARED:
+                for l in lockInstance.queue:
+                    if l.type is LockType.SHARED:
+                        lockInstance.lockHolder.append(l)
+
+    def hasLockBeenGranted(self, dataId: str, transactionId: str):
+        details = self.__dataItemLockMap.get(dataId)
+        for holder in details.lockHolder:
+            if holder.transactionId == transactionId:
+                return True
+        return False
