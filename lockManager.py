@@ -14,7 +14,7 @@ class LockDetails():
     def __init__(self, transactionId: int, type: LockType):
         self.transactionId = transactionId
         self.type = type
-        self.waitingForUpgrade = False
+        self.waitForLockTypeUpgrade = False
 
 class LockInstance:
     def __init__(self):
@@ -51,7 +51,6 @@ class LockManager():
             # Nothing holds the lock
             lockInstance.lockHolder.append(LockDetails(transactionId, type))
             return True
-        # elif len(list(filter(lambda l: l.transactionId == transactionId, lockInstance.lockHolder))) != 0:
         elif self.__already_holds_lock_with_correct_type(lockInstance, transactionId, type) is LockHoldingState.CORRECT_TYPE:
             # If you already have a lock on this item, then you should be able to upgrade it to an exclusive lock
             # If some other transaction also has a shared lock on this item, then place the exclusive type lock in the queue
@@ -66,7 +65,6 @@ class LockManager():
 
                 if len(lockInstance.lockHolder) > 1:
                     lockInstance.queue.append(LockDetails(transactionId, type))
-                    # TODO: On "releaseLock", when a shared lock is released, should check to see if any waitingForUpgrade transactions can be upgraded
                     return False
                 else:
                     # Upgrade the lock type to exclusive
@@ -135,13 +133,21 @@ class LockManager():
             # If the lockholder that has just been added is a shared type and there are also other shared lock type transaction ops
             # waiting in the queue, grant them the lock as well.
             if lockInstance.lockHolder[0].type is LockType.SHARED:
-                for l in lockInstance.queue:
+                toBeRemoved = []
+                for index, l in enumerate(lockInstance.queue):
                     if l.type is LockType.SHARED:
                         lockInstance.lockHolder.append(l)
+                        toBeRemoved.append(index)
+                # TODO: Test case to make sure this works
+                for index in reversed(toBeRemoved):
+                    del lockInstance.queue[index]
 
     def hasLockBeenGranted(self, dataId: int, transactionId: int):
         details = self.__dataItemLockMap.get(dataId)
         for holder in details.lockHolder:
-            if holder.transactionId == transactionId:
+            # Check to see if the transaction holds the lock and is not waiting for the lock to be upgraded to Exclusive
+            if holder.transactionId == transactionId and holder.waitForLockTypeUpgrade is False:
                 return True
+            else:
+                return False
         return False
