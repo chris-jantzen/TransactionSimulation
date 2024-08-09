@@ -89,7 +89,3 @@ for cycle in range(CYCLES):
                     # transaction is blocked
                     transaction.setState(State.BLOCKED)
                     transaction.incrementBlockedCycleCount()
-
-for t in transactionManager.getTransactions():
-    print(t.transactionId)
-    print(t.getState())

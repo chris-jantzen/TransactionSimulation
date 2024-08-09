@@ -102,10 +102,8 @@ class TransactionManager:
         # TODO: Delete comment when sure I won't be doing it this way
         # Flush logs to the log file (Optional, right now just planning to push logs directly to the log file as soon as they're made)
 
-        lm = LockManager.getInstance()
         # Free locks associated with the transaction
-        for dataIdWithLock in transaction.getLocks():
-            lm.releaseLock(dataIdWithLock, transaction.transactionId)
+        self.__freeTransactionsHeldLocks(transaction)
         transaction.releaseLocks()
         transaction.setState(State.COMMITTED)
 
@@ -124,11 +122,16 @@ class TransactionManager:
                 # Whenever we replace the NewValue with the old Value, append redo log <t_id, data_id, old_value, RB>
                 rm.createLog(LogType.REDO, transactionId, log.dataId, oldValue)
                 bm.setValueAtLocation(log.dataId, oldValue)
-            if log.transactionId == transactionId and log.logType is LogType.START:
+            elif log.transactionId == transactionId and log.logType is LogType.START:
                 # done, no need to keep looking back through the logs
                 break
 
         transaction = self.__getTransactionById(transactionId)
+        self.__freeTransactionsHeldLocks(transaction)
         transaction.setState(State.ROLLEDBACK)
 
-
+    def __freeTransactionsHeldLocks(self, transaction: Transaction):
+        lm = LockManager.getInstance()
+        for dataIdWithLock in transaction.getLocks():
+            lm.releaseLock(dataIdWithLock, transaction.transactionId)
+        transaction.releaseLocks()

@@ -127,6 +127,9 @@ class RecoveryManager():
 
                 if logType is LogType.START.value:
                     self.__undoList.remove(transactionId)
+                    # If all undolist transactions have been undone, no need to continue back through the logs
+                    if not self.__undoList:
+                        break
                     continue
 
                 dataId = int(logLine[1])
