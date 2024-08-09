@@ -99,9 +99,6 @@ class TransactionManager:
         rm = RecoveryManager.getInstance()
         rm.createLog(LogType.COMMIT, transaction.transactionId)
 
-        # TODO: Delete comment when sure I won't be doing it this way
-        # Flush logs to the log file (Optional, right now just planning to push logs directly to the log file as soon as they're made)
-
         # Free locks associated with the transaction
         self.__freeTransactionsHeldLocks(transaction)
         transaction.releaseLocks()

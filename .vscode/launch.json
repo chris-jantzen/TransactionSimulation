@@ -11,12 +11,12 @@
             "program": "sim.py",
             "console": "integratedTerminal",
             "args": [
-                "5",  // Cycles
-                "8",   // Transaction Size
-                "0.4", // Start Probability
+                "150",  // Cycles
+                "12",   // Transaction Size
+                "0.3", // Start Probability
                 "0.5", // Write Probability
-                "0.4", // Rollback Probability
-                "20"   // Timout
+                "0.2", // Rollback Probability
+                "25"   // Timeout
             ]
         }
     ]

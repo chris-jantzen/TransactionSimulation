@@ -55,7 +55,7 @@ class LockManager():
             # If you already have a lock on this item, then you should be able to upgrade it to an exclusive lock
             # If some other transaction also has a shared lock on this item, then place the exclusive type lock in the queue
 
-            # Transaction already has a lock on this item TODO: be sure to check that you have an exclusive lock on this item
+            # Transaction already has a lock on this item of the correct type
             return True
         elif self.__already_holds_lock_with_correct_type(lockInstance, transactionId, type) is LockHoldingState.WRONG_TYPE:
             if type is LockType.EXCLUSIVE:
@@ -138,7 +138,6 @@ class LockManager():
                     if l.type is LockType.SHARED:
                         lockInstance.lockHolder.append(l)
                         toBeRemoved.append(index)
-                # TODO: Test case to make sure this works
                 for index in reversed(toBeRemoved):
                     del lockInstance.queue[index]
 
