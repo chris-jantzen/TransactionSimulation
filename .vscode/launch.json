@@ -11,20 +11,13 @@
             "program": "sim.py",
             "console": "integratedTerminal",
             "args": [
-                "2",
-                "1",
-                "1.0",
-                "1.0",
-                "0.0",
-                "2"
+                "10",  // Cycles
+                "3",   // Transaction Size
+                ".75", // Start Probability
+                "0.5", // Write Probability
+                "0.0", // Rollback
+                "10"    // Timout
             ]
-        },
-        {
-            "name": "Debug LockManager",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "lockManager.py",
-            "console": "integratedTerminal"
         }
     ]
 }

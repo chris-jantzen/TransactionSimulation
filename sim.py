@@ -20,6 +20,8 @@ initDbAndLogIfMissing()
 # 1. Begin recovery phase
 RecoveryManager.getInstance().recover()
 
+bm = BufferManager.getInstance()
+
 # 2. Begin simulation process
 transactionManager = TransactionManager.getInstance()
 lockManager = LockManager.getInstance()
@@ -40,7 +42,7 @@ for cycle in range(CYCLES):
             # Look at sqlQuery
             query = transaction.getSqlQuery()
             # Request lock again
-            requestGranted = lockManager.hasLockBeenGranted(query.dataId, transaction.transaction)
+            requestGranted = lockManager.hasLockBeenGranted(query.dataId, transaction.transactionId)
             # If still blocked, check shouldRollBack
             if requestGranted is False:
                 transaction.incrementBlockedCycleCount()
@@ -56,11 +58,14 @@ for cycle in range(CYCLES):
             if action is Action.WRITE:
                 # Schedule write sqlQuery
                 dataId = random.randint(0, 31)
+
                 transaction.setSqlQuery(dataId, OperationType.WRITE)
                 # Need to request an exclusive lock
                 requestGranted = lockManager.requestLock(dataId, transaction.transactionId, LockType.EXCLUSIVE)
                 if requestGranted is True:
-                    # do the operation
+                    # Lock has been acquired
+                    transaction.addLock(dataId)
+                    # do the write operation
                     transactionManager.executeOperation(transaction.transactionId)
                 else:
                     # transaction is blocked
@@ -76,4 +81,15 @@ for cycle in range(CYCLES):
                 # Would need to request a shared lock
                 requestGranted = lockManager.requestLock(dataId, transaction.transactionId, LockType.SHARED)
                 if requestGranted is True:
+                    # Lock has been acquired
                     transaction.addLock(dataId)
+                    # do the read operation
+                    transactionManager.executeOperation(transaction.transactionId)
+                else:
+                    # transaction is blocked
+                    transaction.setState(State.BLOCKED)
+                    transaction.incrementBlockedCycleCount()
+
+for t in transactionManager.getTransactions():
+    print(t.transactionId)
+    print(t.getState())

@@ -27,7 +27,7 @@ class TransactionManager:
     def __does_id_already_exist(self, id: str):
         return (next(filter(lambda x: x.transactionId == id, self.__transactions), False) is not False)
 
-    def __getTransactionById(self, transactionId: str) -> Transaction | None:
+    def __getTransactionById(self, transactionId: int) -> Transaction | None:
         for transaction in self.__transactions:
             if transaction.transactionId == transactionId:
                 return transaction
@@ -35,7 +35,7 @@ class TransactionManager:
 
     def createTransaction(self):
         rm = RecoveryManager.getInstance()
-        transactionId = randint(0, 100000000)
+        transactionId = randint(0, 10000)
         transaction = Transaction(transactionId)
 
         if not self.__does_id_already_exist(transactionId):
@@ -45,13 +45,17 @@ class TransactionManager:
         else:
             self.createTransaction()
 
-    def getTransactions(self) -> Generator[Transaction]:
+    def getTransactions(self) -> Generator[Transaction, None, None]:
         for t in self.__transactions:
             # Get only transactions that aren't inactive (i.e. committed or rolled back)
             if t.getState() is not State.COMMITTED and t.getState() is not State.ROLLEDBACK:
                 yield t
 
-    def executeOperation(self, transactionId: str):
+    def getAllTransactions(self) -> Generator[Transaction, None, None]:
+        for t in self.__transactions:
+            yield t
+
+    def executeOperation(self, transactionId: int):
         # Get the transaction, look at the transactions sqlQuery operation, request lock, if lock granted execute transaction
         transaction = self.__getTransactionById(transactionId)
         if transaction is None:
@@ -59,7 +63,6 @@ class TransactionManager:
 
         sqlQuery = transaction.getSqlQuery()
         transaction.setState(State.ACTIVE)
-        transaction.addLock(transaction.getSqlQuery().dataId)
         transaction.resetBlockedCycleCount()
         transaction.resetSqlQuery()
 
@@ -87,7 +90,7 @@ class TransactionManager:
             _ = bm.getValueAtLocation(sqlQuery.dataId)
             transaction.incrementOpCount()
 
-    def commitTransaction(self, transactionId: str):
+    def commitTransaction(self, transactionId: int):
         transaction = self.__getTransactionById(transactionId)
         if transaction is None:
             raise Exception(f"Transaction with ID {transactionId} does not exist; cannot commit")
@@ -106,7 +109,7 @@ class TransactionManager:
         transaction.releaseLocks()
         transaction.setState(State.COMMITTED)
 
-    def rollbackTransaction(self, transactionId: str):
+    def rollbackTransaction(self, transactionId: int):
         # Insert a rollback log with the recoveryManager
         rm = RecoveryManager.getInstance()
         rm.createLog(LogType.ROLLBACK, transactionId)
@@ -121,7 +124,7 @@ class TransactionManager:
                 # Whenever we replace the NewValue with the old Value, append redo log <t_id, data_id, old_value, RB>
                 rm.createLog(LogType.REDO, transactionId, log.dataId, oldValue)
                 bm.setValueAtLocation(log.dataId, oldValue)
-            if log.transactionId == transactionId and log.Type is LogType.START:
+            if log.transactionId == transactionId and log.logType is LogType.START:
                 # done, no need to keep looking back through the logs
                 break
 

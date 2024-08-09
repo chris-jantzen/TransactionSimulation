@@ -14,7 +14,7 @@ def initDbAndLogIfMissing():
         with open(LOG_PATH, 'x') as file:
             file.write('')
 
-def getInverseValue(value):
+def getInverseValue(value: str):
     if value == '1':
         return '0'
     else:
@@ -25,7 +25,7 @@ class Action(Enum):
     READ = "read"
     ROLLBACK = "rollback"
 
-def getAction(WRITE_PROB, ROLLBACK_PROB):
+def getAction(WRITE_PROB: float, ROLLBACK_PROB: float):
     randomNumber = random.random()
     if WRITE_PROB >= randomNumber:
         return Action.WRITE

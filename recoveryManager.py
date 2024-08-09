@@ -15,7 +15,7 @@ class LogType(Enum):
         return str(self.value)
 
 class Log():
-    def __init__(self, logType: LogType, transactionId: str, dataId: str | None = None, newValue: Optional[str] = None):
+    def __init__(self, logType: LogType, transactionId: int, dataId: Optional[int] = None, newValue: Optional[str] = None):
         self.logType = logType
         self.transactionId = transactionId
         self.dataId = dataId
@@ -48,7 +48,7 @@ class RecoveryManager():
 
         RecoveryManager.__instance = self
 
-    def createLog(self, logType: LogType, transactionId: str, dataId: str | None = None, newValue: str | None = None):
+    def createLog(self, logType: LogType, transactionId: int, dataId: int | None = None, newValue: str | None = None):
         # Use a semaphore (MUTEX) to place a hold on the log buffer
 
         log = None
@@ -63,8 +63,14 @@ class RecoveryManager():
 
             log = Log(logType, transactionId, dataId, newValue)
             self.__logBuffer.append(log)
-        else:
-            raise Exception(f"Invalid Logtype {logType}")
+        elif logType is LogType.REDO:
+            if dataId is None:
+                raise Exception("DataId cannot be None for a Flip log")
+            if newValue is None:
+                raise Exception("NewValue cannot be None for a Flip log")
+
+            log = Log(logType, transactionId, dataId, newValue)
+            self.__logBuffer.append(log)
 
         with open(LOG_PATH, 'a', newline='\n') as logfile:
             log_writer = csv.writer(logfile)
@@ -72,7 +78,7 @@ class RecoveryManager():
 
         # Release the semaphore on the log buffer
 
-    def getLogsReverseScan(self) -> Generator[Log]:
+    def getLogsReverseScan(self) -> Generator[Log, None, None]:
         for log in reversed(self.__logBuffer):
             yield log
 
@@ -88,43 +94,42 @@ class RecoveryManager():
                     continue
 
                 logType = logLine[-1]
-                transactionId = logLine[0]
+                transactionId = int(logLine[0])
                 dataId = None
                 newValue = None
 
                 if len(logLine) == 4:
-                    dataId = logLine[1]
+                    dataId = int(logLine[1])
                     newValue = logLine[2]
 
                 if logType is LogType.START.value:
                     # Add transaction to the undo list as start log is seen
                     self.__undoList.append(transactionId)
-
-                if logType is LogType.COMMIT.value or logType is LogType.ROLLBACK.value:
+                elif logType is LogType.COMMIT.value or logType is LogType.ROLLBACK.value:
                     # Remove transactions from the undo list as rollback and commit type logs are seen
                     self.__undoList.remove(transactionId)
+                elif logType is LogType.FLIP.value or logType is LogType.REDO.value:
+                    # Redo every flip and redo operation seen
 
-                # Redo every flip and redo operation seen
-                if logType is LogType.FLIP.value or logType is LogType.REDO.value:
                     # invert the new value and update the buffer
-                    bm.setValueAtLocation(dataId, getInverseValue(newValue))
+                    bm.setValueAtLocation(int(dataId), newValue)
 
         # Finally just rollback any transactions that remain in the undo list and add rollback logs for each (would normally be abort logs)
         with open(LOG_PATH, 'r') as logfile:
             log_reader = csv.reader(logfile)
             # Read backwards from the end this time
             for logLine in reversed(list(log_reader)):
-                if logLine[0] not in self.__undoList:
+                if int(logLine[0]) not in self.__undoList:
                     continue
 
                 logType = logLine[-1]
-                transactionId = logLine[0]
+                transactionId = int(logLine[0])
 
                 if logType is LogType.START.value:
                     self.__undoList.remove(transactionId)
                     continue
 
-                dataId = logLine[1]
+                dataId = int(logLine[1])
                 newValue = logLine[2]
 
                 if logType is LogType.FLIP.value or logType is LogType.REDO.value:
@@ -132,4 +137,4 @@ class RecoveryManager():
                     # the rollback log. I think it should work okay, as long as it is after
                     value = getInverseValue(newValue)
                     bm.setValueAtLocation(dataId, value)
-                    self.createLog(LogType.REDO, transactionId, dataId, value)
+                    # self.createLog(LogType.REDO, transactionId, dataId, value) # TODO: Don't think you need redo logs in recovery undo phase. I think that's just for rollbacks

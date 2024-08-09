@@ -12,13 +12,13 @@ class OperationType(Enum):
     WRITE = 'write'
 
 class SQLQuery:
-    def __init__(self, dataId: str, operationType: OperationType):
+    def __init__(self, dataId: int, operationType: OperationType):
         self.dataId = dataId
         self.operation = operationType
 
 class Transaction:
-    def __init__(self, id: str):
-        self.transactionId = id
+    def __init__(self, transactionId: int):
+        self.transactionId = transactionId
         self.__state = State.ACTIVE
         self.__opCount = 0
         self.__blockedCycleCount = 0
@@ -47,7 +47,7 @@ class Transaction:
     def isReadyToCommit(self, transactionSize: int) -> bool:
         return self.__opCount == transactionSize
 
-    def setSqlQuery(self, dataId: str, operation: OperationType):
+    def setSqlQuery(self, dataId: int, operation: OperationType):
         # If SQL Query already exists, should not be able to create a new one
         if self.__sqlQuery is not None:
             raise Exception(f"SQL Query already exists for transaction {self.transactionId}")
@@ -59,11 +59,12 @@ class Transaction:
     def resetSqlQuery(self):
         self.__sqlQuery = None
 
-    def addLock(self, dataId: str):
+    def addLock(self, dataId: int):
         # dataId is the data item that has a lock held on it by this transaction
-        self.__locks.append(dataId)
+        if dataId not in self.__locks:
+            self.__locks.append(dataId)
 
-    def hasLockOnDataItem(self, dataId: str):
+    def hasLockOnDataItem(self, dataId: int):
         for l in self.__locks:
             if dataId == l.dataId:
                 return True
@@ -72,6 +73,6 @@ class Transaction:
     def releaseLocks(self):
         self.__locks = []
 
-    def getLocks(self) -> Generator[str]:
+    def getLocks(self) -> Generator[str, None, None]:
         for l in self.__locks:
             yield l
