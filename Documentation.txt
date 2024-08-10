@@ -3,6 +3,8 @@ Chris Jantzen Transaction Simulator
 How to run:
 python3 sim.py cycles t_size start_prob write_prob rollback_prob timeout
 
+Note: This works for running on Mac/Unix-like systems. May be just "python" or "py" for Windows.
+
 ex:
 python3 sim.py 50 5 .5 0.4 0.2 6
 
